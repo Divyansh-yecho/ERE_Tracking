@@ -1,6 +1,10 @@
 # Checkpoint 4 — Connectivity & Size Filter Experiments
 ### ERE Detection and Tracking Pipeline | ERA5 Indian Monsoon (1979–2024)
 
+| Notebook | Script |
+|---|---|
+| [`cp4_connectivity_size_filter.ipynb`](cp4_connectivity_size_filter.ipynb) | [`cp4_connectivity_size_filter.py`](cp4_connectivity_size_filter.py) |
+
 ---
 
 ## Overview

@@ -1,0 +1,20 @@
+# Core
+numpy
+pandas
+scipy
+xarray
+netCDF4
+h5netcdf
+matplotlib
+
+# Geospatial
+regionmask
+cartopy
+geopy
+
+# Statistics
+pymannkendall
+
+# Data access (CP1 download and Kaggle inputs)
+cdsapi
+kagglehub
