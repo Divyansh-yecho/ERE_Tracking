@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Large data and intermediate outputs (download them instead; see data/README.md)
+*.nc
+*.nc4
+*.grib
+*.npy
+*.npz
+*.zarr/
+*.tif
+
+# Credentials
+.cdsapirc
+.env
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -2,6 +2,10 @@
 
 **ERA5 Reanalysis | Indian Monsoon EREs | 1979–2024**
 
+| Notebook | Script |
+|---|---|
+| [`cp3_tracking_0p25deg.ipynb`](cp3_tracking_0p25deg.ipynb) | [`cp3_tracking_0p25deg.py`](cp3_tracking_0p25deg.py) |
+
 ---
 
 ## Overview

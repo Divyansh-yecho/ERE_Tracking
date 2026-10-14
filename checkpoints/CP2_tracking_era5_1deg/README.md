@@ -1,3 +1,33 @@
+# Checkpoint 2 — ERE Detection and First Tracker (ERA5, 1°)
+
+| Notebook | Script | Extra |
+|---|---|---|
+| [`cp2_tracking_1deg.ipynb`](cp2_tracking_1deg.ipynb) | [`cp2_tracking_1deg.py`](cp2_tracking_1deg.py) | [`ere_tracker_animation.html`](ere_tracker_animation.html): animated tracks (download and open in a browser) |
+
+## Overview
+
+The first end-to-end tracker on the CP1 dataset (ERA5, 1°, JJAS 1998–2020).
+
+- **Detection.** Monthly per-cell 99th-percentile thresholds; connected exceedance cells form one ERE object.
+- **Linking.**
+  - Objects are matched on consecutive days by cell overlap (≥15% of the smaller object, after Sullivan et al. 2019), assigned greedily one-to-one.
+  - If there is no overlap, a fallback links objects whose centres are within 2° and whose sizes are similar.
+- **Event types:** birth, continuation, death and domain exit.
+- **Trends:** NT, NE and S-bar trends in the style of Nikumbh et al. (2019).
+
+| Result | Value |
+|---|---|
+| Unique tracks | 11,705 |
+| Single-day tracks | 70% |
+| Mean / max duration | 1.43 / 10 days |
+| Continuation rate | 9.9% |
+
+At 1°, **97.7% of consecutive ERE pairs share no grid cells**, so most links come from the distance fallback rather than real spatial continuity. This is the main reason for moving to 0.25° in [CP3](../CP3_tracking_era5_0p25deg).
+
+The rest of this document is the checkpoint's original list of known limitations.
+
+---
+
 # Checkpoint 2 — Known Limitations and Open Problems
 
 This document records all known limitations and open problems in the current
