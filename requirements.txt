@@ -5,6 +5,7 @@ scipy
 xarray
 netCDF4
 h5netcdf
+pyarrow
 matplotlib
 
 # Geospatial
@@ -12,7 +13,7 @@ regionmask
 cartopy
 geopy
 
-# Statistics
+# Statistics (CP4 notebook)
 pymannkendall
 
 # Data access (CP1 download and Kaggle inputs)

@@ -6,7 +6,11 @@ Source  : cp6b_imerg_tracking_lps_colocation.ipynb (converted cell by cell; figu
 
 Re-runs the MEAN tracker on IMERG (2000-2024, 0.25 deg), joins rain objects to the nearest LPS
 centre on the same date, and tests co-location against a track-level shuffle null.
-Classifies multi-day tracks as NEAR (<=500 km), FAR or NO-LPS.
+Classifies multi-day tracks as NEAR (<=500 km), FAR (strict, >500 km) or NO-LPS (kept separate).
+
+The cells corrected after the last Kaggle run (inland SW-offset test, symmetric null pool,
+strict FAR class) have no stored output in the notebook. cp6_lps_figures.py and cp6_lps_null.py
+in this folder reproduce their results locally from cp6_build_imerg_catalogue.py.
 
 Originally run on Kaggle: input paths point to /kaggle/input/... (see data/README.md at the
 repository root). Notebook shell commands such as `!pip install` are kept as comments.
@@ -1181,23 +1185,43 @@ print(f"\nmultiday-only (dur>2): n {len(md):,} | median {md.nearest_lps_km.media
 
 # %% Cell 19
 # ── Cleaned SW-offset : on-system matches only (3+day, ≤500 km, lat ≤ 30°N) ──
+# The tracker keeps rain on Indian land only, so a coastal depression can lose the eastern part
+# of its rain shield and the centroid shifts west. Check: repeat the offset for inland centres
+# (76-85E, 19-27N) only. If the westward offset survives there, it is physical.
 import numpy as np, matplotlib.pyplot as plt
 md_tn = set(summary_mean.loc[summary_mean.duration > 2, 'track_num'])
 cl = stats_lps[(stats_lps.matchable) & (stats_lps.track_num.isin(md_tn)) &
-               (stats_lps.nearest_lps_km <= 500) & (stats_lps.centroid_lat <= 30)]
+               (stats_lps.nearest_lps_km <= 500) & (stats_lps.centroid_lat <= 30)].copy()
 print(f"clean on-system pairs: {len(cl)}")
 print(f"mean offset   E {cl.offset_E_km.mean():+.0f} km   N {cl.offset_N_km.mean():+.0f} km")
 print(f"median offset E {cl.offset_E_km.median():+.0f} km   N {cl.offset_N_km.median():+.0f} km")
 print(f"in SW quadrant (W & S of centre): {100*((cl.offset_E_km<0)&(cl.offset_N_km<0)).mean():.0f}%")
 
-fig, ax = plt.subplots(figsize=(7, 7))
-hb = ax.hexbin(cl.offset_E_km, cl.offset_N_km, gridsize=30, cmap='YlOrRd', mincnt=1)
-ax.axhline(0, color='k', lw=0.8); ax.axvline(0, color='k', lw=0.8)
-ax.scatter(cl.offset_E_km.mean(), cl.offset_N_km.mean(), s=200, marker='+', color='blue', lw=3)
-ax.set_xlabel('E offset (km)  → rain east of centre'); ax.set_ylabel('N offset (km)  → rain north of centre')
-ax.set_title('Where rain sits relative to the depression centre\nblue + = mean · bottom-left = SW (expected)')
-ax.set_xlim(-700, 700); ax.set_ylim(-700, 700); ax.set_aspect('equal')
-plt.colorbar(hb, label='object-days'); plt.show()
+# reconstruct the matched LPS-centre position from the signed offset (exact), keep INLAND only
+clat = cl.centroid_lat - cl.offset_N_km/110.574
+clon = cl.centroid_lon - cl.offset_E_km/(111.320*np.cos(np.radians(0.5*(cl.centroid_lat+clat))))
+inland = clon.between(76, 85) & clat.between(19, 27)          # central-India belt, off both coasts
+ci = cl[inland]
+print(f"\nINLAND-ONLY centres (lon 76–85, lat 19–27): {len(ci)} of {len(cl)} pairs")
+print(f"  mean offset   E {ci.offset_E_km.mean():+.0f} km   N {ci.offset_N_km.mean():+.0f} km")
+print(f"  median offset E {ci.offset_E_km.median():+.0f} km   N {ci.offset_N_km.median():+.0f} km")
+print(f"  in SW quadrant: {100*((ci.offset_E_km<0)&(ci.offset_N_km<0)).mean():.0f}%")
+# data-driven verdict (no hardcoded numbers): does the westward offset survive inland?
+ratio = ci.offset_E_km.mean() / cl.offset_E_km.mean() if cl.offset_E_km.mean() != 0 else np.nan
+verdict = ("PHYSICAL (offset survives inland — NOT a land-clip artifact)" if ratio >= 0.7
+           else "SUSPECT (offset shrinks inland — partly a coastal land-clip artifact)")
+print(f"  inland/all westward ratio = {ratio:.2f}  →  {verdict}")
+
+fig, ax = plt.subplots(1, 2, figsize=(13, 6.5), sharex=True, sharey=True)
+for a, (d, ttl) in zip(ax, [(cl, 'all on-system (≤500 km, ≤30°N)'), (ci, 'inland centres only')]):
+    hb = a.hexbin(d.offset_E_km, d.offset_N_km, gridsize=28, cmap='YlOrRd', mincnt=1)
+    a.axhline(0, color='k', lw=0.8); a.axvline(0, color='k', lw=0.8)
+    a.scatter(d.offset_E_km.mean(), d.offset_N_km.mean(), s=200, marker='+', color='blue', lw=3)
+    a.set_xlabel('E offset (km) → rain east of centre')
+    a.set_title(f"{ttl}\nmean E {d.offset_E_km.mean():+.0f} km · N {d.offset_N_km.mean():+.0f} km (n={len(d)})")
+    a.set_xlim(-700, 700); a.set_ylim(-700, 700); a.set_aspect('equal')
+ax[0].set_ylabel('N offset (km) → rain north of centre')
+plt.tight_layout(); plt.show()
 
 
 # %% Cell 20
@@ -1375,8 +1399,13 @@ MIN_DAYS = 1                    # set to 3 to demand ≥3 LPS-present days per t
 lps_ymd = {(d.year,d.month,d.day):(g.lat.to_numpy(),g.lon.to_numpy()) for d,g in lps_daily.groupby('date')}
 YEARS   = np.arange(lps_daily.date.dt.year.min(), lps_daily.date.dt.year.max()+1)
 sm_year = summary_mean.set_index('track_num').year
+# Pool = tracks with >= 1 LPS day in their real year, so the observed fraction and the null
+# use the same tracks (never-matched tracks, incl. 2023-24, cannot enter the observed one).
+matchable_real = set(stats_lps.loc[stats_lps.matchable, 'track_num'])
 tracks  = []
 for tn in summary_mean.loc[summary_mean.duration>2,'track_num']:
+    if tn not in matchable_real:      # exclude never-real-matched (31 no-LPS incl. 2023–24)
+        continue
     g = stats_lps[stats_lps.track_num==tn].sort_values('day_of_track')
     dts = pd.to_datetime(g.date, format='%Y%m%d')
     tracks.append((g.centroid_lat.to_numpy(), g.centroid_lon.to_numpy(),
@@ -1451,16 +1480,19 @@ plt.tight_layout(); plt.show()
 
 
 # %% Cell 25
-# ── Where do FAR (>500km) vs NEAR (≤500km) 2+day tracks originate? ──
+# ── Where do NEAR / FAR(strict, >500km) / NO-LPS 2+day tracks originate? ──
+# FAR = matchable tracks with mean nearest-LPS > 500 km. Tracks with no LPS on any day
+# (incl. every 2023-24 track) form a separate NO-LPS class.
 import numpy as np, pandas as pd
 
-DUR_MIN = 2                                                    # ← now 2+
+DUR_MIN = 2
 md_tn   = summary_mean.loc[summary_mean.duration >= DUR_MIN, 'track_num']
 per_trk = (stats_lps[stats_lps.matchable & stats_lps.track_num.isin(md_tn)]
            .groupby('track_num').nearest_lps_km.mean())
-far_tn  = set(per_trk[per_trk > 500].index) | (set(md_tn) - set(per_trk.index))
-near_tn = set(per_trk[per_trk <= 500].index)
-print(f"{DUR_MIN}+day tracks: {len(md_tn)} | near (≤500) {len(near_tn)} | far/never (>500) {len(far_tn)}")
+far_tn   = set(per_trk[per_trk > 500].index)                 # STRICT far (matchable, >500 km)
+near_tn  = set(per_trk[per_trk <= 500].index)
+nolps_tn = set(md_tn) - set(per_trk.index)                   # never matched → NO-LPS (separate)
+print(f"{DUR_MIN}+day tracks: {len(md_tn)} | near {len(near_tn)} | far(strict) {len(far_tn)} | no-LPS {len(nolps_tn)}")
 
 def geo(tns, lab):
     b = stats_lps[stats_lps.track_num.isin(tns)].groupby('track_num').first()   # genesis point
@@ -1475,9 +1507,11 @@ def geo(tns, lab):
     print(f"  born >27°N (foothills): {100*(b.centroid_lat>27).mean():.0f}%  |  "
           f"born ≤76.5°E & ≤21°N (Ghats strip): {100*((b.centroid_lon<=76.5)&(b.centroid_lat<=21)).mean():.0f}%")
 
-geo(far_tn,  "FAR / never-matched (>500 km)")
-geo(near_tn, "NEAR (≤500 km)  [contrast]")
-print("\nEXPECT: far lean W.Ghats + FarNorth; near lean C.India/east.")
+geo(near_tn,  "NEAR (≤500 km)")
+geo(far_tn,   "FAR strict (>500 km, matchable)")
+geo(nolps_tn, "NO-LPS (never matched)")
+print("\nEXPECT: far(strict) leans W.Ghats + FarNorth; near leans C.India/east. "
+      "no-LPS is a mixed bag (incl. 2023–24) and must NOT be pooled into far.")
 
 
 # %% [markdown]
@@ -1485,15 +1519,18 @@ print("\nEXPECT: far lean W.Ghats + FarNorth; near lean C.India/east.")
 
 
 # %% Cell 26
-# ── Where do the >500 km (far / never-matched) 3+day tracks accumulate? ──
+# ── Where do NEAR / FAR(strict, >500km) / NO-LPS 3+day tracks accumulate? ──
+# FAR = matchable tracks with mean nearest-LPS > 500 km. Tracks with no LPS on any day
+# (incl. every 2023-24 track) form a separate NO-LPS class.
 import numpy as np, pandas as pd
 
 md_tn   = summary_mean.loc[summary_mean.duration > 2, 'track_num']
 per_trk = (stats_lps[stats_lps.matchable & stats_lps.track_num.isin(md_tn)]
            .groupby('track_num').nearest_lps_km.mean())
-far_tn  = set(per_trk[per_trk > 500].index) | (set(md_tn) - set(per_trk.index))   # far + never-matched
-near_tn = set(per_trk[per_trk <= 500].index)
-print(f"3+day tracks: {len(md_tn)} | near (≤500) {len(near_tn)} | far/never (>500) {len(far_tn)}")
+far_tn   = set(per_trk[per_trk > 500].index)                 # STRICT far
+near_tn  = set(per_trk[per_trk <= 500].index)
+nolps_tn = set(md_tn) - set(per_trk.index)                   # NO-LPS (separate)
+print(f"3+day tracks: {len(md_tn)} | near {len(near_tn)} | far(strict) {len(far_tn)} | no-LPS {len(nolps_tn)}")
 
 def geo(tns, lab):
     g = stats_lps[stats_lps.track_num.isin(tns)]
@@ -1509,46 +1546,55 @@ def geo(tns, lab):
     print(f"  born >27°N (foothills): {100*(b.centroid_lat>27).mean():.0f}%  |  "
           f"born ≤76.5°E & ≤21°N (Ghats strip): {100*((b.centroid_lon<=76.5)&(b.centroid_lat<=21)).mean():.0f}%")
 
-geo(far_tn, "FAR / never-matched (>500 km)")
-geo(near_tn, "NEAR (≤500 km)  [contrast]")
-print("\nEXPECT: far tracks lean W.Ghats + FarNorth; near tracks lean C.India/east. "
-      "If far tracks are also mostly C.India, the orographic explanation fails.")
+geo(near_tn,  "NEAR (≤500 km)")
+geo(far_tn,   "FAR strict (>500 km, matchable)")
+geo(nolps_tn, "NO-LPS (never matched)")
+print("\nEXPECT: far(strict) leans W.Ghats + FarNorth (orographic); near leans C.India. "
+      "no-LPS reported separately — do NOT pool it into far.")
 
 
 # %% Cell 27
-# ── Map : >500 km / never-matched 3+day tracks · merges red · splits green · NO LPS centres ──
+# ── Map : STRICT far (>500 km matchable) 3+day tracks · merges red · splits green · no-LPS greyed ──
+# FAR = matchable, mean nearest-LPS > 500 km. NO-LPS tracks are shown only as grey genesis dots.
 import numpy as np, pandas as pd, matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 md_tn   = summary_mean.loc[summary_mean.duration > 2, 'track_num']
 per_trk = (stats_lps[stats_lps.matchable & stats_lps.track_num.isin(md_tn)]
            .groupby('track_num').nearest_lps_km.mean())
-far_tn  = set(per_trk[per_trk > 500].index) | (set(md_tn) - set(per_trk.index))
+far_tn   = set(per_trk[per_trk > 500].index)                 # STRICT far only
+nolps_tn = set(md_tn) - set(per_trk.index)                   # never-matched, context only
 
 LON, LAT = np.meshgrid(lon, lat)
 fig, ax = plt.subplots(figsize=(12, 13))
 ax.contour(LON, LAT, india_mask.astype(int), levels=[0.5], colors='0.5', linewidths=0.9, zorder=2)
-# orographic reference lines so accumulation is readable
 ax.axvline(76.5, color='saddlebrown', ls=':', lw=1, alpha=0.6, zorder=1)   # ~Ghats crest
 ax.axhline(27,   color='slateblue',  ls=':', lw=1, alpha=0.6, zorder=1)    # ~foothill belt
 ax.text(74.3, 9, 'W.Ghats', color='saddlebrown', fontsize=9, rotation=90, alpha=0.8)
 ax.text(67, 27.4, 'foothill belt (>27°N)', color='slateblue', fontsize=9, alpha=0.8)
 
+for tn in nolps_tn:                                          # no-LPS genesis (context, faint)
+    g0 = stats_lps[stats_lps.track_num == tn].sort_values('day_of_track')
+    ax.scatter(g0.centroid_lon.iloc[0], g0.centroid_lat.iloc[0], s=12, color='0.7',
+               edgecolor='none', alpha=0.5, zorder=3)
+
 for tn in far_tn:
     g = stats_lps[stats_lps.track_num == tn].sort_values('day_of_track').reset_index(drop=True)
     for k in range(len(g)-1):
         c = 'red' if bool(g.merge_event.iloc[k+1]) else ('green' if bool(g.split_event.iloc[k+1]) else '0.25')
-        ax.plot(g.centroid_lon.iloc[k:k+2], g.centroid_lat.iloc[k:k+2], '-', color=c, lw=1.0, alpha=0.6, zorder=3)
-    ax.scatter(g.centroid_lon.iloc[0], g.centroid_lat.iloc[0], s=14, color='tab:blue',
-               edgecolor='none', alpha=0.7, zorder=4)                       # genesis dot
+        ax.plot(g.centroid_lon.iloc[k:k+2], g.centroid_lat.iloc[k:k+2], '-', color=c, lw=1.0, alpha=0.6, zorder=4)
+    ax.scatter(g.centroid_lon.iloc[0], g.centroid_lat.iloc[0], s=16, color='tab:blue',
+               edgecolor='none', alpha=0.8, zorder=5)                       # far genesis dot
 
-leg = [Line2D([0],[0],color='0.25',lw=1.4,label='track (>500 km from any LPS)'),
+leg = [Line2D([0],[0],color='0.25',lw=1.4,label='FAR strict track (>500 km, matchable)'),
        Line2D([0],[0],color='red',lw=1.4,label='merge segment'),
        Line2D([0],[0],color='green',lw=1.4,label='split segment'),
-       Line2D([0],[0],marker='o',color='w',markerfacecolor='tab:blue',markersize=8,label='genesis point')]
+       Line2D([0],[0],marker='o',color='w',markerfacecolor='tab:blue',markersize=8,label='far genesis'),
+       Line2D([0],[0],marker='o',color='w',markerfacecolor='0.7',markersize=7,label='no-LPS genesis (context)')]
 ax.legend(handles=leg, loc='lower left', fontsize=9)
-ax.set_title(f"{len(far_tn)} multiday tracks lying >500 km from any LPS centre\n"
-             "(where non-depression rain accumulates — expect Ghats + foothills)", fontsize=12)
+ax.set_title(f"{len(far_tn)} STRICT far multiday tracks (>500 km from any LPS)  ·  "
+             f"{len(nolps_tn)} no-LPS as context\n(where non-depression rain accumulates — expect Ghats + foothills)",
+             fontsize=11)
 ax.set_xlim(66, 98); ax.set_ylim(6, 32); ax.set_aspect(1.057)
 ax.set_xlabel('longitude'); ax.set_ylabel('latitude'); plt.tight_layout(); plt.show()
 
@@ -1766,7 +1812,9 @@ plt.tight_layout(); plt.show()
 
 
 # %% Cell 30
-# ── Stationarity : do FAR (>500km) tracks move LESS than NEAR (LPS) tracks? (anchored vs propagating) ──
+# ── Stationarity : do FAR(strict, >500km) tracks move LESS than NEAR (LPS) tracks? ──
+# FAR = matchable, mean nearest-LPS > 500 km; NO-LPS is shown as a separate reference column.
+# Near tracks sit inside moving depressions, so "near moves more" is partly by definition.
 import numpy as np, pandas as pd
 from scipy.stats import mannwhitneyu
 
@@ -1784,42 +1832,48 @@ def track_motion(tns):
         path   = steps.sum()                                   # total distance travelled
         net    = hav(la[0], lo[0], la[-1], lo[-1])             # start→end straight-line
         rows.append(dict(tn=tn, dur=len(g), mean_step=steps.mean(), path=path, net=net,
-                         straightness=net/path if path>0 else np.nan))   # ~1 propagating, ~0 anchored
+                         straightness=net/path if path>0 else np.nan))
     return pd.DataFrame(rows)
+
+def cliffs(a, b): return 2*mannwhitneyu(a, b).statistic/(len(a)*len(b)) - 1
 
 for DUR_MIN, lab in [(2, "2+ day"), (3, "3+ day")]:
     md_tn   = summary_mean.loc[summary_mean.duration >= DUR_MIN, 'track_num']
     per_trk = (stats_lps[stats_lps.matchable & stats_lps.track_num.isin(md_tn)]
                .groupby('track_num').nearest_lps_km.mean())
-    far_tn  = set(per_trk[per_trk > 500].index) | (set(md_tn) - set(per_trk.index))
-    near_tn = set(per_trk[per_trk <= 500].index)
-    F, N = track_motion(far_tn), track_motion(near_tn)
+    far_tn   = set(per_trk[per_trk > 500].index)              # STRICT far
+    near_tn  = set(per_trk[per_trk <= 500].index)
+    nolps_tn = set(md_tn) - set(per_trk.index)                # NO-LPS reference (separate)
+    F, N, NL = track_motion(far_tn), track_motion(near_tn), track_motion(nolps_tn)
     if not len(F) or not len(N): continue
 
-    print("="*70); print(f"{lab}  ·  far {len(F)} tracks  vs  near {len(N)} tracks"); print("="*70)
-    print(f"{'metric':22s}{'FAR (>500)':>14s}{'NEAR (LPS)':>14s}")
+    print("="*74)
+    print(f"{lab}  ·  near {len(N)}  vs  FAR strict {len(F)}   (no-LPS {len(NL)} = separate reference)")
+    print("="*74)
+    print(f"{'metric':24s}{'NEAR':>12s}{'FAR strict':>12s}{'no-LPS':>10s}")
     for key, name in [('mean_step','mean daily step km'), ('path','path length km'),
-                      ('net','net displacement km'), ('straightness','straightness (net/path)')]:
-        print(f"{name:22s}{F[key].median():>14.2f}{N[key].median():>14.2f}")
+                      ('net','net displacement km'), ('straightness','straightness')]:
+        nl = NL[key].median() if len(NL) else np.nan
+        print(f"{name:24s}{N[key].median():>12.1f}{F[key].median():>12.1f}{nl:>10.1f}")
     p_step = mannwhitneyu(F.mean_step, N.mean_step, alternative='less').pvalue
-    p_net  = mannwhitneyu(F.net,       N.net,       alternative='less').pvalue
-    p_str  = mannwhitneyu(F.straightness.dropna(), N.straightness.dropna(), alternative='less').pvalue
-    print(f"\nMann-Whitney (far < near):  mean_step p={p_step:.1e}  net p={p_net:.1e}  straightness p={p_str:.1e}")
-    print("EXPECT: far tracks smaller daily step, smaller net displacement, lower straightness "
-          "(anchored to terrain) vs near tracks (propagate with the depression).")
+    d_step = cliffs(F.mean_step, N.mean_step)
+    print(f"\nfar(strict) < near :  mean_step p={p_step:.1e}  Cliff δ={d_step:+.2f}")
+    print("(the OLD pooled far+no-LPS gave ~77 km/day, p~1e-6; STRICT far is ~75 km/day, δ stronger.)")
 
-# quick visual for 3+ day
+# quick visual for 3+ day (STRICT far vs near; no-LPS overlaid as a dashed reference)
 import matplotlib.pyplot as plt
-md_tn = summary_mean.loc[summary_mean.duration>=3,'track_num']
-per_trk=(stats_lps[stats_lps.matchable & stats_lps.track_num.isin(md_tn)]
-         .groupby('track_num').nearest_lps_km.mean())
-F=track_motion(set(per_trk[per_trk>500].index)|(set(md_tn)-set(per_trk.index)))
-N=track_motion(set(per_trk[per_trk<=500].index))
-fig,ax=plt.subplots(1,2,figsize=(13,5))
-ax[0].hist(N.mean_step,bins=30,alpha=0.55,color='blue',density=True,label='near (LPS)')
-ax[0].hist(F.mean_step,bins=30,alpha=0.55,color='red', density=True,label='far (>500)')
+md_tn   = summary_mean.loc[summary_mean.duration >= 3, 'track_num']
+per_trk = (stats_lps[stats_lps.matchable & stats_lps.track_num.isin(md_tn)]
+           .groupby('track_num').nearest_lps_km.mean())
+F  = track_motion(set(per_trk[per_trk > 500].index))
+N  = track_motion(set(per_trk[per_trk <= 500].index))
+NL = track_motion(set(md_tn) - set(per_trk.index))
+fig, ax = plt.subplots(1, 2, figsize=(13, 5))
+ax[0].hist(N.mean_step, bins=30, alpha=0.55, color='blue', density=True, label='near (LPS)')
+ax[0].hist(F.mean_step, bins=30, alpha=0.55, color='red',  density=True, label='far strict (>500)')
+if len(NL): ax[0].hist(NL.mean_step, bins=30, histtype='step', color='0.35', lw=1.6, density=True, label='no-LPS (ref)')
 ax[0].set_xlabel('mean daily displacement (km/day)'); ax[0].set_title('Daily step: anchored vs propagating'); ax[0].legend()
-ax[1].hist(N.straightness.dropna(),bins=30,alpha=0.55,color='blue',density=True,label='near')
-ax[1].hist(F.straightness.dropna(),bins=30,alpha=0.55,color='red', density=True,label='far')
+ax[1].hist(N.straightness.dropna(), bins=30, alpha=0.55, color='blue', density=True, label='near')
+ax[1].hist(F.straightness.dropna(), bins=30, alpha=0.55, color='red',  density=True, label='far strict')
 ax[1].set_xlabel('straightness (net / path length)'); ax[1].set_title('Directedness: ~1 propagate, ~0 anchored'); ax[1].legend()
 plt.tight_layout(); plt.show()

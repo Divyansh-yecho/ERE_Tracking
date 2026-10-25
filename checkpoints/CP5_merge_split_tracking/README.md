@@ -42,10 +42,12 @@ The MEAN score, (fwd + bwd) / 2, is the symmetric compromise between MAX (which 
 | Single-day tracks | 82.2% |
 | Longest track | 9 days (20–28 June 1996) |
 
-- **Removing the fallback** turns about 2,100 teleport links into honest death-plus-birth pairs, raising the track count from 8,856 to 10,965.
+- **Removing the fallback** turns about 2,100 teleport links into separate deaths and births, raising the track count from 8,856 to 10,965.
 - **A controlled re-run with the 2° fallback** shows it would account for 47% of all continuations, every one sharing zero cells, and that fallback steps are 1.6× longer on average.
 
 <p align="center"><img src="../../figures/cp5_longest_tracks.png" width="480" alt="10 longest-lived ERE tracks"></p>
+
+**Later revision.** The MEAN score can still pass one-sided edge contacts (a small sliver brushing a large object). From [CP7](../CP7_regional_trend_analysis) on, a merge or split also needs `min(fwd, bwd) ≥ 0.05`; continuations are unchanged.
 
 ## Next
 

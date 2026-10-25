@@ -222,6 +222,9 @@ An ERE is classified as `domain_exit` (not `death`) if any of its cells touches 
 | Domain exits | 2,794 records |
 | Track fragmentation index | 0.554 |
 
+<p align="center"><img src="../../figures/cp3_track_density.png" width="420" alt="ERE track density, ERA5 1979-2024">
+<img src="../../figures/cp3_annual_track_counts.png" width="420" alt="Annual ERE track counts"></p>
+
 ---
 
 ## Validation

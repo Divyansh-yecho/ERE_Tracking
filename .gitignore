@@ -5,7 +5,11 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
-# Large data and intermediate outputs (download them instead; see data/README.md)
+# Data: inputs are downloaded into data/ and scripts write to data/derived/ (see data/README.md)
+data/*
+!data/README.md
+
+# Large data and intermediate outputs anywhere else
 *.nc
 *.nc4
 *.grib
