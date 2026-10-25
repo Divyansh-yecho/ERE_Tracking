@@ -22,6 +22,8 @@ The first end-to-end tracker on the CP1 dataset (ERA5, 1°, JJAS 1998–2020).
 | Mean / max duration | 1.43 / 10 days |
 | Continuation rate | 9.9% |
 
+*Trial values from an early run.* The output stored in the notebook comes from a later re-run with changed settings, so its numbers differ.
+
 At 1°, **97.7% of consecutive ERE pairs share no grid cells**, so most links come from the distance fallback rather than real spatial continuity. This is the main reason for moving to 0.25° in [CP3](../CP3_tracking_era5_0p25deg).
 
 The rest of this document is the checkpoint's original list of known limitations.

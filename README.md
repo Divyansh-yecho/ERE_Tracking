@@ -60,6 +60,8 @@ Every checkpoint folder has its own `README.md`.
 | CP7 | [`CP7_regional_trend_analysis`](checkpoints/CP7_regional_trend_analysis) | Survival, intensity scaling, active/break spells, regions and trends, life cycles, merge/split budget, temporal clustering | Size controls survival; active spells triple ERE activity; near-LPS tracks are larger, not more intense |
 | CP8 | [`CP8_spells_olr_bsiso`](checkpoints/CP8_spells_olr_bsiso) | Spells tested against CPC OLR and the APCC BSISO index | Spells confirmed in OLR; active spells phase-locked to the BSISO, breaks only weakly |
 
+*Note:* CP1–CP4 were exploratory. Definitions and thresholds changed between runs, so their numbers are trial values and may not match the stored notebook outputs or the later checkpoints. The definitions are fixed from CP5 on.
+
 ---
 
 ## Method in brief
